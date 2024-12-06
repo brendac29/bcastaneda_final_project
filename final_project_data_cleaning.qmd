@@ -1,0 +1,199 @@
+---
+title: "Final Project"
+author: "Brenda Castañeda"
+date: today
+format: 
+  pdf:
+    include-in-header: 
+       text: |
+         \usepackage{fvextra}
+         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+include-before-body:
+  text: |
+    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
+      showspaces = false,
+      showtabs = false,
+      breaksymbolleft={},
+      breaklines
+    }
+---
+
+SETUP
+```{python}
+import pandas as pd
+import altair as alt
+import geopandas as gpd
+import matplotlib.pyplot as plt
+from shapely import wkt
+import matplotlib.lines as mlines 
+```
+
+CLEAN: IMPORT AND CLEAN MEDIAN HOUSEHOLD INCOME
+```{python}
+#read in 2010 data
+mhi2010 = pd.read_csv("DALMHI2010.csv")
+#rename columns
+mhi2010.columns = ["GEO_ID", "Tract", "Total_Households", "Med_Income", "White_Households", "White_Med_Inc", "Black_Households", "Black_Med_Inc" , "Asian_Households", "Asian_Med_Inc", "Hispanic_Households", "Hispanic_Med_Inc", "WhiteNH_Household", "WhiteNH_Med_Inc"]
+#add year column
+mhi2010["Year"] = 2010
+#remove first row
+mhi2010 = mhi2010.iloc[1:].reset_index(drop=True)
+
+#read in 2020 data
+mhi2020 = pd.read_csv("DALMHI2020.csv")
+#rename columns (note diff order from 2010)
+mhi2020.columns = ["GEO_ID", "Tract", "Total_Households", "White_Households", "Black_Households", "Asian_Households", "Hispanic_Households", "WhiteNH_Household",  "Med_Income", "White_Med_Inc", "Black_Med_Inc" , "Asian_Med_Inc", "Hispanic_Med_Inc",  "WhiteNH_Med_Inc"]
+#add year column
+mhi2020["Year"] = 2020
+#remove first row
+mhi2020 = mhi2020.iloc[1:].reset_index(drop=True)
+
+#merge 2010 and 2020
+mhi_total = pd.concat([mhi2010, mhi2020], ignore_index=True)
+
+#drop WHITE ONLY columns (keep white, non-Hisp)
+mhi_total.drop('White_Households', axis = 1, inplace=True)
+mhi_total.drop("White_Med_Inc", axis = 1, inplace=True)
+mhi_total.drop("Tract", axis = 1, inplace=True)
+
+#convert "-" to 0
+mhi_total = mhi_total.replace("-", 0)
+
+#convert to numeric
+convert = ["Total_Households", "Black_Households", "Asian_Households", "Hispanic_Households", "WhiteNH_Household",  "Med_Income", "Black_Med_Inc" , "Asian_Med_Inc", "Hispanic_Med_Inc",  "WhiteNH_Med_Inc"]
+#remove "+", "," and "-"
+mhi_total[convert] = mhi_total[convert].astype(str)
+mhi_total[convert] = mhi_total[convert].replace({r"\+": "", r",": "", r"\-": ""}, regex=True)
+mhi_total[convert] = mhi_total[convert].apply(pd.to_numeric)
+```
+
+CLEAN: Add racial majority in each tract
+```{python}
+#find percentage of racial comp in each tract
+mhi_total['hispanic_percent'] = mhi_total["Hispanic_Households"]/mhi_total["Total_Households"]*100
+mhi_total['black_percent'] = mhi_total["Black_Households"]/mhi_total["Total_Households"]*100
+mhi_total['asian_percent'] = mhi_total["Asian_Households"]/mhi_total["Total_Households"]*100
+mhi_total['whiteNH_percent'] = mhi_total["WhiteNH_Household"]/mhi_total["Total_Households"]*100
+
+#new column indicating majority race
+def majority_race(row):
+    percentages = {
+        'White': row['whiteNH_percent'],
+        'Hispanic': row['hispanic_percent'],
+        'Black': row['black_percent'],
+        'Asian': row['asian_percent']
+    }
+    return max(percentages, key=percentages.get)  # Return the key (racial group) with the highest value
+
+mhi_total['Maj_Race'] = mhi_total.apply(majority_race, axis=1)
+
+```
+
+CLEAN: ZHVI DATA
+```{python}
+#read in data
+ZHVI = pd.read_csv("ZHVI.csv")
+#subset dallas obs
+ZHVI = ZHVI[(ZHVI["CountyName"] == "Dallas County")] 
+#drop unwanted cols
+ZHVI = ZHVI.drop(columns=['RegionID', 'SizeRank', 'RegionType', 'StateName', 'State', 'Metro', 'City', 'CountyName'])
+
+ZHVI["2000"] = (ZHVI['1/31/2000'] +  ZHVI['2/29/2000'] + ZHVI['3/31/2000'] + ZHVI ['4/30/2000'] + ZHVI['5/31/2000'] + ZHVI['6/30/2000'] + ZHVI['7/31/2000'] + ZHVI['8/31/2000'] + ZHVI['9/30/2000'] + ZHVI['10/31/2000'] + ZHVI['11/30/2000'] + ZHVI['12/31/2000'])/12
+
+ZHVI["2005"] = (ZHVI['1/31/2005'] + ZHVI['2/28/2005'] + ZHVI['3/31/2005'] + ZHVI['4/30/2005'] + 
+ZHVI['5/31/2005'] + ZHVI['6/30/2005'] + ZHVI['7/31/2005'] + ZHVI['8/31/2005'] + 
+ZHVI['9/30/2005'] + ZHVI['10/31/2005'] + ZHVI['11/30/2005'] + ZHVI['12/31/2005']) / 12
+
+ZHVI["2010"] = (ZHVI['1/31/2010'] + ZHVI['2/28/2010'] + ZHVI['3/31/2010'] + ZHVI['4/30/2010'] + 
+ZHVI['5/31/2010'] + ZHVI['6/30/2010'] + ZHVI['7/31/2010'] + ZHVI['8/31/2010'] + 
+ZHVI['9/30/2010'] + ZHVI['10/31/2010'] + ZHVI['11/30/2010'] + ZHVI['12/31/2010']) / 12
+
+ZHVI["2015"] = (ZHVI['1/31/2015'] + ZHVI['2/28/2015'] + ZHVI['3/31/2015'] + ZHVI['4/30/2015'] + 
+ZHVI['5/31/2015'] + ZHVI['6/30/2015'] + ZHVI['7/31/2015'] + ZHVI['8/31/2015'] + 
+ZHVI['9/30/2015'] + ZHVI['10/31/2015'] + ZHVI['11/30/2015'] + ZHVI['12/31/2015']) / 12
+
+ZHVI["2020"] = (ZHVI['1/31/2020'] + ZHVI['2/29/2020'] + ZHVI['3/31/2020'] + ZHVI['4/30/2020'] + 
+ZHVI['5/31/2020'] + ZHVI['6/30/2020'] + ZHVI['7/31/2020'] + ZHVI['8/31/2020'] + 
+ZHVI['9/30/2020'] + ZHVI['10/31/2020'] + ZHVI['11/30/2020'] + ZHVI['12/31/2020']) / 12
+
+ZHVI["2024"] = (ZHVI['1/31/2024'] + ZHVI['2/29/2024'] + ZHVI['3/31/2024'] + ZHVI['4/30/2024'] + 
+ZHVI['5/31/2024'] + ZHVI['6/30/2024'] + ZHVI['7/31/2024'] + ZHVI['8/31/2024'] + 
+ZHVI['9/30/2024'] + ZHVI['10/31/2024']) / 10
+
+ZHVI = ZHVI[['RegionName', '2000', '2005', '2010', '2015', '2020', '2024' ]]
+ZHVI = ZHVI.rename(columns={"RegionName": "ZIP"})
+
+#convert to long format
+ZHVI_long = pd.melt(ZHVI, id_vars=['ZIP'], 
+                  value_vars=['2000', '2005', '2010', '2015', '2020', '2024'],
+                  var_name='Year', value_name='house_value')
+
+```
+
+CLEAN: CENSUS TRACT SHAPEFILE
+```{python}
+#load census tract shapefile
+tracts20 = gpd.read_file("tracts2020.shp")
+tracts20 = tracts20.rename(columns={"GEOIDFQ": "GEO_ID"})
+
+tracts10 = gpd.read_file("tract2010.shp")
+tracts10 = tracts10.rename(columns={"GEOID10": "GEO_ID"})
+
+#subset by year
+mhi_tracts20 = income_value[income_value['Year'] == "2020"]
+mhi_tracts10 = income_value[income_value['Year'] == "2010"]
+mhi_tracts10['GEO_ID'] = mhi_tracts10['GEO_ID'].str.split('US').str[1]
+
+#merge with MHI
+mhi_tracts20 = tracts20.merge(mhi_tracts20, on='GEO_ID', how='inner')
+mhi_tracts10 = tracts10.merge(mhi_tracts10, on='GEO_ID', how='inner')
+```
+
+MERGE: ZIP TRACT CROSSWALK 
+```{python}
+#read in crosswalk
+crosswalk2020 = pd.read_csv("zip_tract_crosswalk_2020.csv")
+crosswalk2020 = crosswalk2020[["ZIP", "TRACT"]]
+
+crosswalk2010 = pd.read_csv("zip_tract_crosswalk_2010.csv")
+crosswalk2010 = crosswalk2010[["ZIP", "TRACT"]]
+
+#merge with ZHVHI
+ZHVI_2020 = ZHVI_long[ZHVI_long["Year"] == '2020']
+ZHVI_crosswalk_2020 = ZHVI_2020.merge(crosswalk2020, on="ZIP")
+
+ZHVI_2010 = ZHVI_long[ZHVI_long["Year"] == '2010']
+ZHVI_crosswalk_2010 = ZHVI_2010.merge(crosswalk2010, on = "ZIP")
+
+ZHVI_crosswalk_total = pd.concat([ZHVI_crosswalk_2010, ZHVI_crosswalk_2020])
+```
+
+MERGE: ZHVI_Crosswalk with MHI
+```{python}
+#extract tract values
+mhi_total['TRACT'] = mhi_total['GEO_ID'].str.extract(r'US(\d+)', expand=False)
+
+#merge with ZHVI
+mhi_total['TRACT'] = mhi_total['TRACT'].astype(str)
+ZHVI_crosswalk_total['TRACT'] = ZHVI_crosswalk_total['TRACT'].astype(str)
+mhi_total['Year'] = mhi_total['Year'].astype(str)
+ZHVI_crosswalk_total['Year'] = ZHVI_crosswalk_total['Year'].astype(str)
+ZHVI_MHI = ZHVI_crosswalk_total.merge(mhi_total, on = ["TRACT", "Year"])
+ZHVI_MHI['ZIP'].unique()
+
+#save data for shiny app
+ZHVI_MHI_pivot = ZHVI_MHI.pivot_table(
+    index='TRACT',  # Using ZIP as the unique identifier
+    columns='Year',  # Pivoting by year (2010, 2020)
+    values=['Med_Income', 'house_value'],  # Values to pivot
+    aggfunc='first'  # In case of duplicate rows, take the first value
+
+)
+
+# Flatten MultiIndex columns
+ZHVI_MHI_pivot.columns = [f"{col[0]}_{col[1]}" for col in ZHVI_MHI_pivot.columns]
+
+# Reset the index to get the ZIP column back
+ZHVI_MHI_pivot = ZHVI_MHI_pivot.reset_index()
+ZHVI_MHI_pivot.to_csv('ZHVI_MHI.csv', index=False)
+```
