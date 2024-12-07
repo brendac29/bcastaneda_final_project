@@ -1,6 +1,13 @@
+---
+format: html
+execute: 
+    echo: false
+    eval: false
+---
 
-SETUP
+
 ```{python, echo = False, results = "hide", warnings = False}
+#SETUP
 import pandas as pd
 import altair as alt
 import geopandas as gpd
@@ -10,9 +17,10 @@ import matplotlib.lines as mlines
 from matplotlib.ticker import FuncFormatter
 ```
 
-CLEAN: IMPORT AND CLEAN MHI DATA (INCLUDING #OF HOUSEHOLDS BY RACE)
+
 ```{python, echo = False, results = "hide", warnings = False}
-#read in 2010 data
+#CLEAN: IMPORT AND CLEAN MHI DATA (INCLUDING #OF HOUSEHOLDS BY RACE)
+# #read in 2010 data
 mhi2010 = pd.read_csv("Data\DALMHI2010.csv")
 #rename columns
 mhi2010.columns = ["GEO_ID", "Tract", "Total_Households", "Med_Income", "White_Households", "White_Med_Inc", "Black_Households", "Black_Med_Inc" , "Asian_Households", "Asian_Med_Inc", "Hispanic_Households", "Hispanic_Med_Inc", "WhiteNH_Household", "WhiteNH_Med_Inc"]
@@ -49,9 +57,10 @@ mhi_total[convert] = mhi_total[convert].replace({r"\+": "", r",": "", r"\-": ""}
 mhi_total[convert] = mhi_total[convert].apply(pd.to_numeric)
 ```
 
-CLEAN: add racial majority in each tract
+
 ```{python, echo = False, results = "hide", warnings = False}
-#find percentage of racial comp in each tract
+#CLEAN: add racial majority in each tract
+# #find percentage of racial comp in each tract
 mhi_total['hispanic_percent'] = mhi_total["Hispanic_Households"]/mhi_total["Total_Households"]*100
 mhi_total['black_percent'] = mhi_total["Black_Households"]/mhi_total["Total_Households"]*100
 mhi_total['asian_percent'] = mhi_total["Asian_Households"]/mhi_total["Total_Households"]*100
@@ -66,13 +75,13 @@ def majority_race(row):
         'Asian': row['asian_percent']
     }
     return max(percentages, key=percentages.get)  # Return the key (racial group) with the highest value
-
+#apply function
 mhi_total['Maj_Race'] = mhi_total.apply(majority_race, axis=1)
 
 ```
 
-CLEAN: Median Home Value
 ```{python, echo = False, results = "hide", warnings = False}
+#CLEAN: Median Home Value
 #clean 2010
 MedValue2010 = pd.read_csv("Data\MedValue2010.csv")
 MedValue2010.drop('B25077_001M', axis = 1, inplace=True)
@@ -104,8 +113,8 @@ income_value = mhi_total.merge(MedValue, on=["GEO_ID", "Year"])
 income_value['Year'] = income_value['Year'].astype(str)
 ```
 
-CLEAN: CENSUS TRACT SHAPEFILE
 ```{python, echo = False, results = "hide", warnings = False}
+#CLEAN: CENSUS TRACT SHAPEFILE
 #load census tract shapefile
 tracts20 = gpd.read_file("Data/tracts2020.shp")
 tracts20 = tracts20.rename(columns={"GEOIDFQ": "GEO_ID"})
@@ -123,8 +132,8 @@ mhi_tracts20 = tracts20.merge(mhi_tracts20, on='GEO_ID', how='inner')
 mhi_tracts10 = tracts10.merge(mhi_tracts10, on='GEO_ID', how='inner')
 ```
 
-CLEAN: ZHVI DATA
 ```{python, echo = False, results = "hide", warnings = False}
+#CLEAN: ZHVI DATA
 #read in data
 ZHVI = pd.read_csv("Data\ZHVI.csv")
 #subset dallas obs
@@ -164,8 +173,8 @@ ZHVI_long = pd.melt(ZHVI, id_vars=['ZIP'],
 
 ```
 
-CLEAN-MERGE: ZIP TRACT CROSSWALK 
 ```{python, echo = False, results = "hide", warnings = False}
+#CLEAN-MERGE: ZIP TRACT CROSSWALK 
 #read in crosswalk
 crosswalk2020 = pd.read_csv("Data\zip_tract_crosswalk_2020.csv")
 crosswalk2020 = crosswalk2020[["ZIP", "TRACT"]]
@@ -183,7 +192,7 @@ ZHVI_crosswalk_2010 = ZHVI_2010.merge(crosswalk2010, on = "ZIP")
 ZHVI_crosswalk_total = pd.concat([ZHVI_crosswalk_2010, ZHVI_crosswalk_2020])
 ```
 
-PLOT: SCATTER ZHVI VS MHI
+
 ```{python, echo = False, results = "hide", warnings = False}
 #extract tract values
 mhi_total['TRACT'] = mhi_total['GEO_ID'].str.extract(r'US(\d+)', expand=False)
@@ -205,14 +214,17 @@ ZHVI_MHI_pivot = ZHVI_MHI.pivot_table(
 
 )
 
-# Flatten MultiIndex columns
+# Flatten columns
 ZHVI_MHI_pivot.columns = [f"{col[0]}_{col[1]}" for col in ZHVI_MHI_pivot.columns]
 
 # Reset the index to get the ZIP column back
 ZHVI_MHI_pivot = ZHVI_MHI_pivot.reset_index()
-ZHVI_MHI_pivot.to_csv('ZHVI_MHI.csv', index=False)
+ZHVI_MHI_pivot.to_csv('Data\ZHVI_MHI.csv', index=False)
+```
 
-
+```{python, echo = False, results = "hide", warnings = False}
+#SCATTER PLOTS: ZHVI VS MEDIAN INCOME
+#entire population in each census tract
 income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
     y=alt.Y("house_value:Q", title = "Home Value"), 
     x=alt.X("Med_Income:Q", title = "Median Household Income"), 
@@ -224,16 +236,65 @@ income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
 )
 income_value_plot.show()
 
+#black median home vs income
+black_income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
+    y=alt.Y("house_value:Q", title = "Home Value"), 
+    x=alt.X("Black_Med_Income:Q", title = "Median Household Income"), 
+    color=alt.Color('Year:N', scale = alt.Scale(domain=["2010", "2020"], 
+                                    range=['#66B3B1', '#B9A0D4']))
+).properties(
+    width=550,
+    title = "Black Median Household Income vs House Value (by Census Tract)"
+)
+black_income_value_plot.show()
+
+#hispanic median home vs income
+hispanic_income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
+    y=alt.Y("house_value:Q", title = "Home Value"), 
+    x=alt.X("Hispanic_Med_Income:Q", title = "Median Household Income"), 
+    color=alt.Color('Year:N', scale = alt.Scale(domain=["2010", "2020"], 
+                                    range=['#66B3B1', '#B9A0D4']))
+).properties(
+    width=550,
+    title = "Hispanic Median Household Income vs House Value (by Census Tract)"
+)
+hispanic_income_value_plot.show()
+
+#asian median home vs income
+asian_income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
+    y=alt.Y("house_value:Q", title = "Home Value"), 
+    x=alt.X("Asian_Med_Income:Q", title = "Median Household Income"), 
+    color=alt.Color('Year:N', scale = alt.Scale(domain=["2010", "2020"], 
+                                    range=['#66B3B1', '#B9A0D4']))
+).properties(
+    width=550,
+    title = "Asian Median Household Income vs House Value (by Census Tract)"
+)
+asian_income_value_plot.show()
+
+#white median home vs income
+white_income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
+    y=alt.Y("house_value:Q", title = "Home Value"), 
+    x=alt.X("White_Med_Income:Q", title = "Median Household Income"), 
+    color=alt.Color('Year:N', scale = alt.Scale(domain=["2010", "2020"], 
+                                    range=['#66B3B1', '#B9A0D4']))
+).properties(
+    width=550,
+    title = "White Median Household Income vs House Value (by Census Tract)"
+)
+white_income_value_plot.show()
 ```
 
-JOIN ALL DATA
+
 ```{python, echo = False, results = "hide", warnings = False}
+#JOIN ALL DATA 2010
 mhi_tracts10 = mhi_tracts10.rename(columns = {"GEO_ID": "TRACT"})
 mhi_tracts10['TRACT'] = mhi_tracts10['TRACT'].astype(str)
 ZHVI_crosswalk_2010['TRACT'] = ZHVI_crosswalk_2010['TRACT'].astype(str)
 final2010 = mhi_tracts10.merge(ZHVI_crosswalk_2010, on = "TRACT")
 final2010 = final2010.drop_duplicates(subset='TRACT', keep='first')
 
+#JOIN ALL DATA 2020
 mhi_tracts20 = mhi_tracts20.rename(columns = {"GEO_ID": "TRACT"})
 mhi_tracts20['TRACT'] = mhi_tracts20['TRACT'].astype(str)
 ZHVI_crosswalk_2020['TRACT'] = ZHVI_crosswalk_2020['TRACT'].astype(str)
@@ -241,8 +302,9 @@ ZHVI_crosswalk_2020 = ZHVI_crosswalk_2020.drop_duplicates(subset='TRACT', keep='
 final2020 = mhi_tracts20.merge(ZHVI_crosswalk_2020, on = "TRACT", how="left")
 ```
 
-CLEAN: Bin home value and med income to create choropleth
 ```{python, echo = False, results = "hide", warnings = False}
+#CREATE BINS FOR HOME VALUES AND MEDIAN INCOME TO CREATE CHOROPLETH
+# Calculate percentiles for Med_Income and Med_House_Value for 2010
 income_bins_2010 = [0, final2010['Med_Income'].quantile(0.25), final2010['Med_Income'].quantile(0.5), final2010['Med_Income'].quantile(0.75), final2010['Med_Income'].max()]
 income_labels_2010 = ['Low', 'Lower-Middle', 'Upper-Middle', 'High']
 
@@ -265,11 +327,10 @@ final2020['Income_Binned'] = pd.cut(final2020['Med_Income'], bins=income_bins_20
 final2020['House_Value_Binned'] = pd.cut(final2020['Med_House_Value'], bins=house_value_bins_2020, labels=house_value_labels_2020, include_lowest=True)
 ```
 
-PLOT: spatial racial comp
 ```{python, echo = False, results = "hide", warnings = False}
+#PLOT SPATIAL RACIAL MAJORITY COMPOSITION MAP
 #plot 2010
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-# Plot the boundaries
 mhi_tracts10.boundary.plot(ax=ax, color='white')
 
 mhi_tracts10.plot(column='Maj_Race', ax=ax, legend=True,
@@ -285,7 +346,6 @@ plt.show()
 
 #plot 2020
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-# Plot the boundaries
 mhi_tracts20.boundary.plot(ax=ax, color='white')
 
 mhi_tracts20.plot(column='Maj_Race', ax=ax, legend=True,
@@ -300,8 +360,8 @@ ax.set_ylim([32.57, 32.95])
 plt.show()
 ```
 
-PLOT: Home Value Map 2010 and 2020
 ```{python, echo = False, results = "hide", warnings = False}
+#PLOT HOME VALUE CHOROPLETHS
 #2010 house value
 fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 final2010.boundary.plot(ax=ax, linewidth=1, color='black')  # Plot boundaries
@@ -325,8 +385,8 @@ ax.set_axis_off()
 plt.show()
 ```
 
-PLOT: Median Income Map 2010 and 2020
 ```{python, echo = False, results = "hide", warnings = False}
+#PLOT MEDIAN INCOME CHOROPLETH
 #2010 income
 fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 
@@ -351,13 +411,17 @@ ax.set_axis_off()
 plt.show()
 ```
 
-CLEAN: ZORI 
 ```{python, echo = False, results = "hide", warnings = False}
+#CLEAN ZILLOW RENTER INDEX DATASET
+#read in data
 ZORI = pd.read_csv('Data\ZORI.csv')
 ZORI.head()
 
+#subset dallas county
 ZORI = ZORI[ZORI["RegionName"] == "Dallas County"]
 ZORI = ZORI[ZORI["State"] == "TX"]
+
+#select desired columns
 ZORI = ZORI.drop(columns=['RegionID', 'SizeRank', 'RegionType', 'StateName', 'State', 'Metro', 'StateCodeFIPS', 'MunicipalCodeFIPS'])
 
 #convert to long
@@ -367,110 +431,113 @@ ZORI['year'] = ZORI['Date'].dt.year
 ZORI = ZORI.groupby('year')['Rent'].mean().reset_index()
 ```
 
-CLEAN: Renter Income
 ```{python, echo = False, results = "hide", warnings = False}
-income15 = pd.read_csv("Data\income15.csv")
-income15 = income15.iloc[[3]].reset_index(drop=True)
-income15.drop('Label (Grouping)', axis = 1, inplace=True)
-income15.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
-income15["year"] = 2015
-
+#CLEAN RENTER MEDIAN INCOME DATA
+#2015
+income15 = pd.read_csv("Data\income15.csv") #read in data
+income15 = income15.iloc[[3]].reset_index(drop=True) #select desired rows
+income15.drop('Label (Grouping)', axis = 1, inplace=True) #drop unecessary columns
+income15.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"] #rename columns
+income15["year"] = 2015 #add year column
+#2016
 income16 = pd.read_csv("Data\income16.csv")
 income16 = income16.iloc[[3]].reset_index(drop=True)
 income16.drop('Label (Grouping)', axis = 1, inplace=True)
 income16.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income16["year"] = 2016
-
+#2017
 income17 = pd.read_csv("Data\income17.csv")
 income17 = income17.iloc[[5]].reset_index(drop=True)
 income17.drop('Label (Grouping)', axis = 1, inplace=True)
 income17.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income17["year"] = 2017
-
+#2018
 income18 = pd.read_csv("Data\income18.csv")
 income18 = income18.iloc[[5]].reset_index(drop=True)
 income18.drop('Label (Grouping)', axis = 1, inplace=True)
 income18.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income18["year"] = 2018
-
+#2019
 income19 = pd.read_csv("Data\income19.csv")
 income19 = income19.iloc[[5]].reset_index(drop=True)
 income19.drop('Label (Grouping)', axis = 1, inplace=True)
 income19.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income19["year"] = 2019
-
+#2020
 income20 = pd.read_csv("Data\income20.csv")
 income20 = income20.iloc[[5]].reset_index(drop=True)
 income20.drop('Label (Grouping)', axis = 1, inplace=True)
 income20.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income20["year"] = 2020
-
+#2021
 income21 = pd.read_csv("Data\income21.csv")
 income21 = income21.iloc[[5]].reset_index(drop=True)
 income21.drop('Label (Grouping)', axis = 1, inplace=True)
 income21.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income21["year"] = 2021
-
+#2022
 income22 = pd.read_csv("Data\income22.csv")
 income22 = income22.iloc[[5]].reset_index(drop=True)
 income22.drop('Label (Grouping)', axis = 1, inplace=True)
 income22.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income22["year"] = 2022
-
+#2023
 income23 = pd.read_csv("Data\income23.csv")
 income23 = income23.iloc[[5]].reset_index(drop=True)
 income23.drop('Label (Grouping)', axis = 1, inplace=True)
 income23.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
 income23["year"] = 2023
 
+#concat all years
 median_income = pd.concat([income15, income16, income16, income17, income18, income19, income20, income21, income22, income23])
 ```
 
-MERGE and add affordability 
 ```{python, echo = False, results = "hide", warnings = False}
+#merge zori data with renter incmoe data
 zori_median_income = median_income.merge(ZORI, on = 'year')
+#remove commas from rows
 zori_median_income = zori_median_income.applymap(lambda x: x.replace(',', '') if isinstance(x, str) else x)
 zori_median_income = zori_median_income.apply(pd.to_numeric, errors='coerce')
-
+#calculate affordability (30% of income)
 zori_median_income['All'] = (zori_median_income['total_inc']*0.30)/12
 zori_median_income['Black'] = (zori_median_income['Black_inc']*0.3)/12
 zori_median_income['Asian'] = (zori_median_income['Asian_inc']*0.3)/12
 zori_median_income['Hispanic'] = (zori_median_income['Hispanic_inc']*0.3)/12
 zori_median_income['NH_White'] = (zori_median_income['NH_White_inc']*0.3)/12
 
-colors = {
-    'Rent': 'black',
-    'All': 'blue',
-    'NH_White': '#6B5B95',
-    'Black': '#B9A0D4',
-    'Hispanic': '#F4A300',
-    'Asian': '#FFB6C1'
-}
-
-# Plot the data (assuming you have columns for each category in the zori_median_income dataframe)
-plt.figure(figsize=(10, 6))
-
-# Plot each line individually
-plt.plot(zori_median_income['year'], zori_median_income['Rent'], color=colors['Rent'], label='Rent')
-plt.plot(zori_median_income['year'], zori_median_income['All'], color=colors['All'], linestyle='--', label='All')
-plt.plot(zori_median_income['year'], zori_median_income['NH_White'], color=colors['NH_White'], linestyle='--', label='NH White')
-plt.plot(zori_median_income['year'], zori_median_income['Black'], color=colors['Black'], linestyle='--', label='Black')
-plt.plot(zori_median_income['year'], zori_median_income['Hispanic'], color=colors['Hispanic'], linestyle='--', label='Hispanic')
-plt.plot(zori_median_income['year'], zori_median_income['Asian'], color=colors['Asian'], linestyle='--', label='Asian')
-
-# Set titles and labels
-plt.title("Rent Affordable for Median Renter")
-plt.xlabel("Year")
-plt.ylabel("($)")
-
-# Add a legend
-plt.legend(title="Category", loc='upper left')
-
-# Format the y-axis ticks with a dollar sign
-formatter = FuncFormatter(lambda x, pos: f'${x:,.0f}')
-plt.gca().yaxis.set_major_formatter(formatter)
-
-# Show the plot
-plt.tight_layout()
-plt.show()
+#save dataframe for shiny app
+zori_median_income.to_csv("Data\zori_median_income.csv", index = False)
 ```
+
+**City of Dallas Housing Affordability and Gentrification** 
+**Brenda Castañeda (brendac29)** 
+
+**Background and Research Question**  
+Housing affordability and gentrification in Dallas are important issues in Dallas, especially amid rapid population increase in the last decade. Gentrification is not a straightforward measure but rather a process that happens over time in a given area. Some factors that characterize gentrification are increases in property value (rising housing costs), neighborhood demographic shifts, reduction in the housing supply, and new investment in historically marginalized areas. In this project, I focus on rising housing costs and neighborhood demographic shifts. In particular, as  rising home values and rental rates outpace income growth, this project seeks to explore the trend over time of home values, rents, and median household income, how these trends vary across racial groups, and what demographic shifts are evident across the city and how these might relate to gentrification. The overall policy question is whether Dallas residents are vulnerable to displacement in the face of rising housing costs and shifting demographic patterns.  
+
+**Data and Coding Approach** 
+First, I explored the relationship between the median household income and home values for each census tract in 2010 and 2020. I used median household income data from the ACS 2010-2020 dataset and Zillow’s Home Value Index which is a measure of the typical home value across a given region, to create a scatter plot where each point represents a census tract in the city of Dallas (Figure 1). Then, I explored this relationship across Racial categories. I created scatter plots of home values vs median household income of Black, Hispanic, Asian and non-Hispanic White households, respectively (Figure 2). 
+After exploring this relationship, I shifted to explore trends in the rental housing. I used ACS Median household income data as well as Zillow’s Observed Rent Index (ZORI). Using ZORI, I found the mean rents over time from 2015-2023. Then, I estimated renter affordability by calculating 30% of median household income and dividing by 12 months. This number was a measure of the monthly rent that the median household in Dallas could afford. I calculated affordability for the median household as well as by race.  
+After looking at home value and rental trends, I wanted to explore the demographic changes that occurred across the city. To do so, I estimated the percentage of the population that fit into the top racial categories (Black, Hispanic, non-Hispanic White, and Asian) in each census tract. Then, using a function, found the racial majority in each census tract. I merged the data with census tract shapefiles to create choropleths of the racial majority distribution across the city in 2010 and 2020 (Figure 4). One challenge I faced at this step was that I initially used 2020 census tract shapefiles but had a lot of missing data in the 2010 map. Since census tracts change every decade, I had to use different shapefiles for 2010 and 2020 which is why the tracts look slightly different for each year.   
+I also wanted to look at changes in median household income and home value across the city between 2010 and 2020, so I used the data described above to plot the distribution of these variables across the city for 2010 and 2020. The first version of these maps had a continuous home value and median household income, respectively. However, it was difficult to compare given that all values in 2020 were generally higher than 2010. Therefore, I binned the data so that each category corresponded to a quartile in the distribution of the variable for each year.  
+
+**Findings** 
+The figure below shows a general positive relationship between home value and median household income. However, the data points for 2020 cluster higher on house value (y-axis), indicating an increase in home values compared to 2010. This suggests that house values have risen over time. The key takeaway from this initial correlation is that home values have increased between 2010 and 2020 and appear to have outpaced income growth. This upward shift in home values might point to challenges in housing affordability, especially for lower-income areas.  
+![Median Household Income vs House Value](Pictures\zhvi_mhi_all.png)
+
+The figure below shows the relationship between home value and median household income by race. Black households appear to have lower median household incomes and home values compared to other groups. Hispanic households have slightly higher values than Black households but still cluster at the lower end of the home value and median household income distribution. Non-Hispanic White and Asian households have greater spread and generally higher income and home values. It is evident that there are disparities between racial groups in terms of median household income and house values. These disparities may have been exacerbated by the rising home prices between 2010 and 2020. 
+![Median Household Income vs House Value by Race)](Pictures\zhvi_mhi_race.png)
+
+The next figure depicts mean rent over time as well as the rent that the median renter can afford by race. The median renter has an affordability gap that is consistent across time. However, when we subset by race, Hispanic and Black median renters have lower affordability rates than the median renter. It is particularly worth noting that the affordability gap for Black households is increasing over time. In 2015 the difference between the Black median renter affordability and the mean rent was $364 /month while in 2023 it was $489 /month. The gap in affordability for non-Hispanic White an Asian households is positive, meaning they can afford higher rents than the mean rent in the city. This plot is in the shiny app and allows for an easier comparison between selected racical groups.
+
+![Dallas Rent Affordability by Race](Pictures\rent_affordability.png) 
+
+The figure below shows six maps illustrating trends in racial composition, income, and house values by census tract in Dallas between 2010 and 2020. The racial majority composition map shows largely segregated city with Hispanic and Black communities concentrated in the south and west sides of Dallas. Their distribution did not shift much from 2010 to 2020. Non-Hispanic White households predominate in northern Dallas. Some census tracts with Black or Hispanic racial majorities in 2010 shifted White majority in 2020.
+
+![Demographic and Home Value Shifts 2010 to 2020](Pictures\maps.png)
+
+The median household income maps show a concentration of low-income tracts in southern and western Dallas and higher income tracts in north Dallas. Furthermore, it is worth noting that the areas that experienced a racial majority shift from Black or Hispanic in 2010 to White in 2020 align closely with the areas that shifted from lower income in 2010 to higher income in 2020. Finally, low-value housing overlaps significantly with low-income areas concentrated in the south and west of the of city. Areas with low house values in 2010 align well with the areas that saw racial and income shifts from 2010 to 2020. This suggests the moving in of high-income households into areas with low home values.    
+
+**Policy Implications**  Black and Hispanic households are disproportionately affected by rising housing costs. Targeted affordable housing and rental assistance programs for low-SES minority groups are essential for addressing these disparities. Furthermore, the changing demographic patterns suggest gentrification, therefore, policies that promote equitable development such as inclusionary zones and affordable housing mandates are important to mitigate gentrification. Identifying at risk neighborhoods would enable targeted interventions to protect long-term residents from displacement. 
+
+**Future Work**  Some future work includes expanding the timeline to view shifts in trends and demographics across the city prior to 2010. Furthermore, next steps would involve looking at the other two factors that characterize gentrification; reduced supply of affordable units and new investments in historically marginalized neighborhoods to understand the trends in these factors and develop a more robust conclusion about gentrification patterns in the city. It would also be helpful to look at other demographic patterns such as education level across the city over time. 
