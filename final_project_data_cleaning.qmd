@@ -1,5 +1,13 @@
 ---
-format: html
+format: 
+  html:
+    css: |
+      body {
+        margin: 0.5in; /* Set 0.5-inch margins */
+      }
+      @page {
+        margin: 0.5in; /* Ensure 0.5-inch margins for print */
+      }
 execute: 
     echo: false
     eval: false
