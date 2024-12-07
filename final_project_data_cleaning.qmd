@@ -1,37 +1,19 @@
----
-title: "Final Project"
-author: "Brenda Castañeda"
-date: today
-format: 
-  pdf:
-    include-in-header: 
-       text: |
-         \usepackage{fvextra}
-         \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
-include-before-body:
-  text: |
-    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{
-      showspaces = false,
-      showtabs = false,
-      breaksymbolleft={},
-      breaklines
-    }
----
 
 SETUP
-```{python}
+```{python, echo = False, results = "hide", warnings = False}
 import pandas as pd
 import altair as alt
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from shapely import wkt
-import matplotlib.lines as mlines 
+import matplotlib.lines as mlines
+from matplotlib.ticker import FuncFormatter
 ```
 
-CLEAN: IMPORT AND CLEAN MEDIAN HOUSEHOLD INCOME
-```{python}
+CLEAN: IMPORT AND CLEAN MHI DATA (INCLUDING #OF HOUSEHOLDS BY RACE)
+```{python, echo = False, results = "hide", warnings = False}
 #read in 2010 data
-mhi2010 = pd.read_csv("DALMHI2010.csv")
+mhi2010 = pd.read_csv("Data\DALMHI2010.csv")
 #rename columns
 mhi2010.columns = ["GEO_ID", "Tract", "Total_Households", "Med_Income", "White_Households", "White_Med_Inc", "Black_Households", "Black_Med_Inc" , "Asian_Households", "Asian_Med_Inc", "Hispanic_Households", "Hispanic_Med_Inc", "WhiteNH_Household", "WhiteNH_Med_Inc"]
 #add year column
@@ -40,7 +22,7 @@ mhi2010["Year"] = 2010
 mhi2010 = mhi2010.iloc[1:].reset_index(drop=True)
 
 #read in 2020 data
-mhi2020 = pd.read_csv("DALMHI2020.csv")
+mhi2020 = pd.read_csv("Data\DALMHI2020.csv")
 #rename columns (note diff order from 2010)
 mhi2020.columns = ["GEO_ID", "Tract", "Total_Households", "White_Households", "Black_Households", "Asian_Households", "Hispanic_Households", "WhiteNH_Household",  "Med_Income", "White_Med_Inc", "Black_Med_Inc" , "Asian_Med_Inc", "Hispanic_Med_Inc",  "WhiteNH_Med_Inc"]
 #add year column
@@ -67,8 +49,8 @@ mhi_total[convert] = mhi_total[convert].replace({r"\+": "", r",": "", r"\-": ""}
 mhi_total[convert] = mhi_total[convert].apply(pd.to_numeric)
 ```
 
-CLEAN: Add racial majority in each tract
-```{python}
+CLEAN: add racial majority in each tract
+```{python, echo = False, results = "hide", warnings = False}
 #find percentage of racial comp in each tract
 mhi_total['hispanic_percent'] = mhi_total["Hispanic_Households"]/mhi_total["Total_Households"]*100
 mhi_total['black_percent'] = mhi_total["Black_Households"]/mhi_total["Total_Households"]*100
@@ -89,10 +71,62 @@ mhi_total['Maj_Race'] = mhi_total.apply(majority_race, axis=1)
 
 ```
 
+CLEAN: Median Home Value
+```{python, echo = False, results = "hide", warnings = False}
+#clean 2010
+MedValue2010 = pd.read_csv("Data\MedValue2010.csv")
+MedValue2010.drop('B25077_001M', axis = 1, inplace=True)
+MedValue2010.drop("NAME", axis=1, inplace=True)
+MedValue2010.drop("Unnamed: 4", axis=1, inplace=True)
+MedValue2010.columns = ["GEO_ID", "Med_House_Value"]
+MedValue2010["Year"] = 2010
+MedValue2010 = MedValue2010.iloc[1:].reset_index(drop=True)
+
+#clean 2020
+MedValue2020 = pd.read_csv("Data\MedValue2020.csv")
+MedValue2020.drop('B25077_001M', axis = 1, inplace=True)
+MedValue2020.drop("NAME", axis=1, inplace=True)
+MedValue2020.drop("Unnamed: 4", axis=1, inplace=True)
+MedValue2020.columns = ["GEO_ID", "Med_House_Value"]
+MedValue2020["Year"] = 2020
+MedValue2020 = MedValue2020.iloc[1:].reset_index(drop=True)
+
+#concat 2010 and 2020
+MedValue = pd.concat([MedValue2010, MedValue2020], ignore_index=True)
+#convert "-" to 0
+MedValue = MedValue.replace("-", 0)
+MedValue["Med_House_Value"] = MedValue["Med_House_Value"].replace({r"\+": "", r",": "", r"\-": ""}, regex=True)
+#convert to numeric
+MedValue["Med_House_Value"] = pd.to_numeric(MedValue["Med_House_Value"])
+
+#merge with mhi_total
+income_value = mhi_total.merge(MedValue, on=["GEO_ID", "Year"])
+income_value['Year'] = income_value['Year'].astype(str)
+```
+
+CLEAN: CENSUS TRACT SHAPEFILE
+```{python, echo = False, results = "hide", warnings = False}
+#load census tract shapefile
+tracts20 = gpd.read_file("Data/tracts2020.shp")
+tracts20 = tracts20.rename(columns={"GEOIDFQ": "GEO_ID"})
+
+tracts10 = gpd.read_file("Data/tract2010.shp")
+tracts10 = tracts10.rename(columns={"GEOID10": "GEO_ID"})
+
+#subset by year
+mhi_tracts20 = income_value[income_value['Year'] == "2020"]
+mhi_tracts10 = income_value[income_value['Year'] == "2010"]
+mhi_tracts10['GEO_ID'] = mhi_tracts10['GEO_ID'].str.split('US').str[1]
+
+#merge with MHI
+mhi_tracts20 = tracts20.merge(mhi_tracts20, on='GEO_ID', how='inner')
+mhi_tracts10 = tracts10.merge(mhi_tracts10, on='GEO_ID', how='inner')
+```
+
 CLEAN: ZHVI DATA
-```{python}
+```{python, echo = False, results = "hide", warnings = False}
 #read in data
-ZHVI = pd.read_csv("ZHVI.csv")
+ZHVI = pd.read_csv("Data\ZHVI.csv")
 #subset dallas obs
 ZHVI = ZHVI[(ZHVI["CountyName"] == "Dallas County")] 
 #drop unwanted cols
@@ -130,32 +164,13 @@ ZHVI_long = pd.melt(ZHVI, id_vars=['ZIP'],
 
 ```
 
-CLEAN: CENSUS TRACT SHAPEFILE
-```{python}
-#load census tract shapefile
-tracts20 = gpd.read_file("tracts2020.shp")
-tracts20 = tracts20.rename(columns={"GEOIDFQ": "GEO_ID"})
-
-tracts10 = gpd.read_file("tract2010.shp")
-tracts10 = tracts10.rename(columns={"GEOID10": "GEO_ID"})
-
-#subset by year
-mhi_tracts20 = income_value[income_value['Year'] == "2020"]
-mhi_tracts10 = income_value[income_value['Year'] == "2010"]
-mhi_tracts10['GEO_ID'] = mhi_tracts10['GEO_ID'].str.split('US').str[1]
-
-#merge with MHI
-mhi_tracts20 = tracts20.merge(mhi_tracts20, on='GEO_ID', how='inner')
-mhi_tracts10 = tracts10.merge(mhi_tracts10, on='GEO_ID', how='inner')
-```
-
-MERGE: ZIP TRACT CROSSWALK 
-```{python}
+CLEAN-MERGE: ZIP TRACT CROSSWALK 
+```{python, echo = False, results = "hide", warnings = False}
 #read in crosswalk
-crosswalk2020 = pd.read_csv("zip_tract_crosswalk_2020.csv")
+crosswalk2020 = pd.read_csv("Data\zip_tract_crosswalk_2020.csv")
 crosswalk2020 = crosswalk2020[["ZIP", "TRACT"]]
 
-crosswalk2010 = pd.read_csv("zip_tract_crosswalk_2010.csv")
+crosswalk2010 = pd.read_csv("Data\zip_tract_crosswalk_2010.csv")
 crosswalk2010 = crosswalk2010[["ZIP", "TRACT"]]
 
 #merge with ZHVHI
@@ -168,8 +183,8 @@ ZHVI_crosswalk_2010 = ZHVI_2010.merge(crosswalk2010, on = "ZIP")
 ZHVI_crosswalk_total = pd.concat([ZHVI_crosswalk_2010, ZHVI_crosswalk_2020])
 ```
 
-MERGE: ZHVI_Crosswalk with MHI
-```{python}
+PLOT: SCATTER ZHVI VS MHI
+```{python, echo = False, results = "hide", warnings = False}
 #extract tract values
 mhi_total['TRACT'] = mhi_total['GEO_ID'].str.extract(r'US(\d+)', expand=False)
 
@@ -196,4 +211,266 @@ ZHVI_MHI_pivot.columns = [f"{col[0]}_{col[1]}" for col in ZHVI_MHI_pivot.columns
 # Reset the index to get the ZIP column back
 ZHVI_MHI_pivot = ZHVI_MHI_pivot.reset_index()
 ZHVI_MHI_pivot.to_csv('ZHVI_MHI.csv', index=False)
+
+
+income_value_plot = alt.Chart(ZHVI_MHI).mark_point(filled=True).encode(
+    y=alt.Y("house_value:Q", title = "Home Value"), 
+    x=alt.X("Med_Income:Q", title = "Median Household Income"), 
+    color=alt.Color('Year:N', scale = alt.Scale(domain=["2010", "2020"], 
+                                    range=['#66B3B1', '#B9A0D4']))
+).properties(
+    width=550,
+    title = "Median Household Income vs House Value (by Census Tract)"
+)
+income_value_plot.show()
+
+```
+
+JOIN ALL DATA
+```{python, echo = False, results = "hide", warnings = False}
+mhi_tracts10 = mhi_tracts10.rename(columns = {"GEO_ID": "TRACT"})
+mhi_tracts10['TRACT'] = mhi_tracts10['TRACT'].astype(str)
+ZHVI_crosswalk_2010['TRACT'] = ZHVI_crosswalk_2010['TRACT'].astype(str)
+final2010 = mhi_tracts10.merge(ZHVI_crosswalk_2010, on = "TRACT")
+final2010 = final2010.drop_duplicates(subset='TRACT', keep='first')
+
+mhi_tracts20 = mhi_tracts20.rename(columns = {"GEO_ID": "TRACT"})
+mhi_tracts20['TRACT'] = mhi_tracts20['TRACT'].astype(str)
+ZHVI_crosswalk_2020['TRACT'] = ZHVI_crosswalk_2020['TRACT'].astype(str)
+ZHVI_crosswalk_2020 = ZHVI_crosswalk_2020.drop_duplicates(subset='TRACT', keep='first')
+final2020 = mhi_tracts20.merge(ZHVI_crosswalk_2020, on = "TRACT", how="left")
+```
+
+CLEAN: Bin home value and med income to create choropleth
+```{python, echo = False, results = "hide", warnings = False}
+income_bins_2010 = [0, final2010['Med_Income'].quantile(0.25), final2010['Med_Income'].quantile(0.5), final2010['Med_Income'].quantile(0.75), final2010['Med_Income'].max()]
+income_labels_2010 = ['Low', 'Lower-Middle', 'Upper-Middle', 'High']
+
+house_value_bins_2010 = [0, final2010['Med_House_Value'].quantile(0.25), final2010['Med_House_Value'].quantile(0.5), final2010['Med_House_Value'].quantile(0.75), final2010['Med_House_Value'].max()]
+house_value_labels_2010 = ['Low', 'Lower-Middle', 'Upper-Middle', 'High']
+
+# Calculate percentiles for Med_Income and Med_House_Value for 2020
+income_bins_2020 = [0, final2020['Med_Income'].quantile(0.25), final2020['Med_Income'].quantile(0.5), final2020['Med_Income'].quantile(0.75), final2020['Med_Income'].max()]
+income_labels_2020 = ['Low', 'Lower-Middle', 'Upper-Middle', 'High']
+
+house_value_bins_2020 = [0, final2020['Med_House_Value'].quantile(0.25), final2020['Med_House_Value'].quantile(0.5), final2020['Med_House_Value'].quantile(0.75), final2020['Med_House_Value'].max()]
+house_value_labels_2020 = ['Low', 'Lower-Middle', 'Upper-Middle', 'High']
+
+# Apply binning for 2010
+final2010['Income_Binned'] = pd.cut(final2010['Med_Income'], bins=income_bins_2010, labels=income_labels_2010, include_lowest=True)
+final2010['House_Value_Binned'] = pd.cut(final2010['Med_House_Value'], bins=house_value_bins_2010, labels=house_value_labels_2010, include_lowest=True)
+
+# Apply binning for 2020
+final2020['Income_Binned'] = pd.cut(final2020['Med_Income'], bins=income_bins_2020, labels=income_labels_2020, include_lowest=True)
+final2020['House_Value_Binned'] = pd.cut(final2020['Med_House_Value'], bins=house_value_bins_2020, labels=house_value_labels_2020, include_lowest=True)
+```
+
+PLOT: spatial racial comp
+```{python, echo = False, results = "hide", warnings = False}
+#plot 2010
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+# Plot the boundaries
+mhi_tracts10.boundary.plot(ax=ax, color='white')
+
+mhi_tracts10.plot(column='Maj_Race', ax=ax, legend=True,
+                legend_kwds={'title': "Majority Racial Composition"},  # Correct legend title
+                missing_kwds={'color': 'lightgrey', 'label': 'No Data'},  # Handle missing data
+                linewidth=0.2, cmap="tab20b", categorical=True)
+
+ax.set_title('Spatial Racial Composition of Dallas 2010')
+ax.set_axis_off()
+ax.set_xlim([-97.01, -96.55])
+ax.set_ylim([32.57, 32.95])
+plt.show()
+
+#plot 2020
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+# Plot the boundaries
+mhi_tracts20.boundary.plot(ax=ax, color='white')
+
+mhi_tracts20.plot(column='Maj_Race', ax=ax, legend=True,
+                legend_kwds={'title': "Majority Racial Composition"},  # Correct legend title
+                missing_kwds={'color': 'lightgrey', 'label': 'No Data'},  # Handle missing data
+                linewidth=0.2, cmap="tab20b", categorical=True)
+
+ax.set_title('Spatial Racial Composition of Dallas 2020')
+ax.set_axis_off()
+ax.set_xlim([-97.01, -96.55])
+ax.set_ylim([32.57, 32.95])
+plt.show()
+```
+
+PLOT: Home Value Map 2010 and 2020
+```{python, echo = False, results = "hide", warnings = False}
+#2010 house value
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+final2010.boundary.plot(ax=ax, linewidth=1, color='black')  # Plot boundaries
+final2010.plot(column='House_Value_Binned', ax=ax, legend=True,
+               legend_kwds={'title': "Home Value"},
+               missing_kwds={'color': 'lightgrey', 'label': 'No Data'},
+               cmap='Set3', edgecolor='black')
+ax.set_title('2010 House Value Index')
+ax.set_axis_off()
+plt.show()
+
+#2020 house value
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+final2020.boundary.plot(ax=ax, linewidth=1, color='black')  # Plot boundaries
+final2020.plot(column='House_Value_Binned', ax=ax, legend=True,
+               legend_kwds={'title': "Home Value"},
+               missing_kwds={'color': 'lightgrey', 'label': 'No Data'},
+               cmap='Set3', edgecolor='black')
+ax.set_title('2020 House Value Index')
+ax.set_axis_off()
+plt.show()
+```
+
+PLOT: Median Income Map 2010 and 2020
+```{python, echo = False, results = "hide", warnings = False}
+#2010 income
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+final2010.boundary.plot(ax=ax, linewidth=1, color='black')  # Plot boundaries
+final2010.plot(column='Income_Binned', ax=ax, legend=True,
+               legend_kwds={'title': "Median Household Income"},
+               missing_kwds={'color': 'lightgrey', 'label': 'No Data'},
+               cmap='Set3', edgecolor='black')
+ax.set_title('2010 Median Household Income')
+ax.set_axis_off()
+plt.show()
+
+#2020 income
+fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+final2020.boundary.plot(ax=ax, linewidth=1, color='black')  # Plot boundaries
+final2020.plot(column='Income_Binned', ax=ax, legend=True,
+               legend_kwds={'title': "Median Household Income"},
+               missing_kwds={'color': 'lightgrey', 'label': 'No Data'},
+               cmap='Set3', edgecolor='black')
+ax.set_title('2020 Median Household Income')
+ax.set_axis_off()
+plt.show()
+```
+
+CLEAN: ZORI 
+```{python, echo = False, results = "hide", warnings = False}
+ZORI = pd.read_csv('Data\ZORI.csv')
+ZORI.head()
+
+ZORI = ZORI[ZORI["RegionName"] == "Dallas County"]
+ZORI = ZORI[ZORI["State"] == "TX"]
+ZORI = ZORI.drop(columns=['RegionID', 'SizeRank', 'RegionType', 'StateName', 'State', 'Metro', 'StateCodeFIPS', 'MunicipalCodeFIPS'])
+
+#convert to long
+ZORI = pd.melt(ZORI, id_vars=['RegionName'], var_name='Date', value_name='Rent')
+ZORI['Date'] = pd.to_datetime(ZORI['Date'], errors='coerce')
+ZORI['year'] = ZORI['Date'].dt.year
+ZORI = ZORI.groupby('year')['Rent'].mean().reset_index()
+```
+
+CLEAN: Renter Income
+```{python, echo = False, results = "hide", warnings = False}
+income15 = pd.read_csv("Data\income15.csv")
+income15 = income15.iloc[[3]].reset_index(drop=True)
+income15.drop('Label (Grouping)', axis = 1, inplace=True)
+income15.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income15["year"] = 2015
+
+income16 = pd.read_csv("Data\income16.csv")
+income16 = income16.iloc[[3]].reset_index(drop=True)
+income16.drop('Label (Grouping)', axis = 1, inplace=True)
+income16.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income16["year"] = 2016
+
+income17 = pd.read_csv("Data\income17.csv")
+income17 = income17.iloc[[5]].reset_index(drop=True)
+income17.drop('Label (Grouping)', axis = 1, inplace=True)
+income17.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income17["year"] = 2017
+
+income18 = pd.read_csv("Data\income18.csv")
+income18 = income18.iloc[[5]].reset_index(drop=True)
+income18.drop('Label (Grouping)', axis = 1, inplace=True)
+income18.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income18["year"] = 2018
+
+income19 = pd.read_csv("Data\income19.csv")
+income19 = income19.iloc[[5]].reset_index(drop=True)
+income19.drop('Label (Grouping)', axis = 1, inplace=True)
+income19.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income19["year"] = 2019
+
+income20 = pd.read_csv("Data\income20.csv")
+income20 = income20.iloc[[5]].reset_index(drop=True)
+income20.drop('Label (Grouping)', axis = 1, inplace=True)
+income20.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income20["year"] = 2020
+
+income21 = pd.read_csv("Data\income21.csv")
+income21 = income21.iloc[[5]].reset_index(drop=True)
+income21.drop('Label (Grouping)', axis = 1, inplace=True)
+income21.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income21["year"] = 2021
+
+income22 = pd.read_csv("Data\income22.csv")
+income22 = income22.iloc[[5]].reset_index(drop=True)
+income22.drop('Label (Grouping)', axis = 1, inplace=True)
+income22.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income22["year"] = 2022
+
+income23 = pd.read_csv("Data\income23.csv")
+income23 = income23.iloc[[5]].reset_index(drop=True)
+income23.drop('Label (Grouping)', axis = 1, inplace=True)
+income23.columns = ["total_inc", 'Black_inc', 'Asian_inc', "Hispanic_inc", "NH_White_inc"]
+income23["year"] = 2023
+
+median_income = pd.concat([income15, income16, income16, income17, income18, income19, income20, income21, income22, income23])
+```
+
+MERGE and add affordability 
+```{python, echo = False, results = "hide", warnings = False}
+zori_median_income = median_income.merge(ZORI, on = 'year')
+zori_median_income = zori_median_income.applymap(lambda x: x.replace(',', '') if isinstance(x, str) else x)
+zori_median_income = zori_median_income.apply(pd.to_numeric, errors='coerce')
+
+zori_median_income['All'] = (zori_median_income['total_inc']*0.30)/12
+zori_median_income['Black'] = (zori_median_income['Black_inc']*0.3)/12
+zori_median_income['Asian'] = (zori_median_income['Asian_inc']*0.3)/12
+zori_median_income['Hispanic'] = (zori_median_income['Hispanic_inc']*0.3)/12
+zori_median_income['NH_White'] = (zori_median_income['NH_White_inc']*0.3)/12
+
+colors = {
+    'Rent': 'black',
+    'All': 'blue',
+    'NH_White': '#6B5B95',
+    'Black': '#B9A0D4',
+    'Hispanic': '#F4A300',
+    'Asian': '#FFB6C1'
+}
+
+# Plot the data (assuming you have columns for each category in the zori_median_income dataframe)
+plt.figure(figsize=(10, 6))
+
+# Plot each line individually
+plt.plot(zori_median_income['year'], zori_median_income['Rent'], color=colors['Rent'], label='Rent')
+plt.plot(zori_median_income['year'], zori_median_income['All'], color=colors['All'], linestyle='--', label='All')
+plt.plot(zori_median_income['year'], zori_median_income['NH_White'], color=colors['NH_White'], linestyle='--', label='NH White')
+plt.plot(zori_median_income['year'], zori_median_income['Black'], color=colors['Black'], linestyle='--', label='Black')
+plt.plot(zori_median_income['year'], zori_median_income['Hispanic'], color=colors['Hispanic'], linestyle='--', label='Hispanic')
+plt.plot(zori_median_income['year'], zori_median_income['Asian'], color=colors['Asian'], linestyle='--', label='Asian')
+
+# Set titles and labels
+plt.title("Rent Affordable for Median Renter")
+plt.xlabel("Year")
+plt.ylabel("($)")
+
+# Add a legend
+plt.legend(title="Category", loc='upper left')
+
+# Format the y-axis ticks with a dollar sign
+formatter = FuncFormatter(lambda x, pos: f'${x:,.0f}')
+plt.gca().yaxis.set_major_formatter(formatter)
+
+# Show the plot
+plt.tight_layout()
+plt.show()
 ```
